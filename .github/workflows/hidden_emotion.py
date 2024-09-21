@@ -12,17 +12,17 @@ import json
 import nltk
 from nltk.corpus import wordnet as wn
 
-# Configuration
+
 config = {
     "split_ratio": [0.8, 0.2],
     "batch_size": 64,
     "seed": 42,
     "num_epochs": 100,
     "num_models": 5,
-    "patience": 5  # Early stopping patience
+    "patience": 5  
 }
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Set the device based on GPU availability
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  
 
 random_seed = 42
 torch.manual_seed(random_seed)
@@ -30,17 +30,17 @@ torch.backends.cudnn.deterministic = True
 
 nltk.download('wordnet')
 
-# Tokenizer
+
 tokenizer = get_tokenizer("basic_english")
 
-# Synonym replacement for text augmentation
+
 def synonym_replacement(words, n=1):
     """Perform synonym replacement for the given words."""
     new_words = words.copy()
     for _ in range(n):
         idx = random.randint(0, len(words) - 1)
         word = words[idx]
-        if isinstance(word, str):  # Check if the word is already a string
+        if isinstance(word, str):  
             synonyms = get_synonyms(word)
             if synonyms:
                 synonym = random.choice(synonyms)
@@ -55,15 +55,15 @@ def get_synonyms(word):
             synonyms.append(lemma.name())
     return synonyms
 
-# Define TorchText fields for data preprocessing
+
 TEXT = torchtext.data.Field(sequential=True, tokenize=tokenizer, lower=True)
 LABEL = torchtext.data.Field(sequential=False, use_vocab=False, dtype=torch.int64)
 
-# New emotion labels and hidden emotion labels
+
 EMOTION_LABELS = ["no emotion", "anger", "disgust", "fear", "happiness", "sadness", "surprise"]
 HIDE_EMOTION_LABELS = ["no emotion", "anger", "Care", "fear", "anxiety", "sadness", "craving", "anticipation", "pleasure", "satisfaction"]
 
-# Load and process JSON data for training and test sets
+
 try:
     with open("AI_daliydia_test.json", "r", encoding="utf-8") as file:
         train_data = json.load(file)
@@ -84,23 +84,22 @@ try:
 except Exception as e:
     print(f"Error loading or processing JSON data: {e}")
 
-# Define fields
+
 fields = [("text", TEXT), ("hide_emotion", LABEL), ("emotion", LABEL)]
 
-# Create training and test set examples
+
 train_examples = [torchtext.data.Example.fromlist([train_dialogs[i], train_hide_emotion[i], train_emotions[i]], fields)
                   for i in range(len(train_dialogs))]
 test_examples = [torchtext.data.Example.fromlist([test_dialogs[i], test_hide_emotion[i], test_emotions[i]], fields)
                  for i in range(len(test_dialogs))]
 
-# Create training and test datasets
+
 train_dataset = torchtext.data.Dataset(train_examples, fields)
 test_dataset = torchtext.data.Dataset(test_examples, fields)
 
-# Split the dataset into training, validation, and test sets
+
 train_data, val_data = train_dataset.split(split_ratio=config["split_ratio"])
 
-# Create iterators for batching and padding the data
 train_iterator, val_iterator, test_iterator = torchtext.data.BucketIterator.splits(
     (train_data, val_data, test_dataset),
     batch_size=config["batch_size"],
@@ -108,7 +107,7 @@ train_iterator, val_iterator, test_iterator = torchtext.data.BucketIterator.spli
     sort_within_batch=False
 )
 
-# Build vocabulary for the text field using pre-trained vectors
+
 TEXT.build_vocab(train_dataset, vectors="glove.6B.100d")
 
 # Define sentiment analysis model
@@ -136,12 +135,12 @@ class SentimentAnalysisModel(nn.Module):
         output, _ = pad_packed_sequence(packed_output, batch_first=True)
         output = self.layer_norm(output)
         output = self.dropout(output)
-        output = self.fc1(output[:, -1, :])  # Take the last hidden state
+        output = self.fc1(output[:, -1, :])  
         output = F.relu(output)
         output = self.fc2(output)
         return output
 
-# Instantiate multiple models for ensemble learning
+
 output_dim = len(HIDE_EMOTION_LABELS)
 models = []
 for _ in range(config["num_models"]):
@@ -152,14 +151,14 @@ for _ in range(config["num_models"]):
                                    bidirectional=True)
     models.append(model.to(device))
 
-# Define loss function and optimizers with weight decay
+
 criterion = nn.CrossEntropyLoss()
 optimizers = [optim.Adam(model.parameters(), weight_decay=1e-5) for model in models]
 
 best_val_loss = float('inf')
 epochs_no_improve = 0
 
-# Training function
+
 def train(model, iterator, optimizer, criterion, device, augmentations=True):
     model.train()
     epoch_loss = 0
